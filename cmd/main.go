@@ -16,6 +16,38 @@ import (
 const colourGreen = "\033[42m %s \033[0m"
 const colourYellow = "\033[43m %s \033[0m"
 
+type Player struct {
+	settings      *Settings
+	currStreak    int
+	longestStreak int
+	stats         [6]int
+}
+
+type Settings struct {
+	colourBlind bool
+	hardMode    bool
+}
+
+func (p *Player) CreateGame(db *bolt.DB) error {
+	answer, err := words.RandomWord()
+	if err != nil {
+		return err
+	}
+	currGame := Game{p, []string{}, answer, false}
+	err = currGame.PlayGame()
+	return err
+}
+
+func (p *Player) ManageSettings(db *bolt.DB) error {
+	var err error
+	return err
+}
+
+func (p *Player) ViewStats(db *bolt.DB) error {
+	var err error
+	return err
+}
+
 type Game struct {
 	player       *Player
 	wordsGuessed []string
@@ -69,7 +101,7 @@ func (g *Game) HandleResults() error {
 	return err
 }
 
-func (g *Game) Play() error {
+func (g *Game) PlayGame() error {
 	var err error
 	var input string
 	reader := bufio.NewReader(os.Stdin)
@@ -91,14 +123,6 @@ func (g *Game) Play() error {
 	}
 	g.HandleResults()
 	return err
-}
-
-type Player struct {
-	colourBlind   bool
-	hardMode      bool
-	currStreak    int
-	longestStreak int
-	stats         [6]int
 }
 
 func setupDB() (*bolt.DB, error) {
@@ -132,6 +156,7 @@ func initPlayer(db *bolt.DB) (*Player, error) {
 		playerBytes := tx.Bucket([]byte("DB")).Get([]byte("PLAYERDATA"))
 		var dbErr error
 		dbErr = json.Unmarshal(playerBytes, player)
+		fmt.Println()
 		return dbErr
 	})
 	return player, err
@@ -140,26 +165,6 @@ func initPlayer(db *bolt.DB) (*Player, error) {
 func exitGracefully(err error) {
 	fmt.Fprintf(os.Stderr, "error: %v\n", err)
 	os.Exit(1)
-}
-
-func play(db *bolt.DB, player *Player) error {
-	answer, err := words.RandomWord()
-	if err != nil {
-		return err
-	}
-	currGame := Game{player, []string{}, answer, false}
-	err = currGame.Play()
-	return err
-}
-
-func settings(db *bolt.DB, player *Player) error {
-	var err error
-	return err
-}
-
-func stats(db *bolt.DB, player *Player) error {
-	var err error
-	return err
 }
 
 func manageCommands(db *bolt.DB, player *Player) error {
@@ -183,11 +188,11 @@ func manageCommands(db *bolt.DB, player *Player) error {
 	var err error
 
 	if *action == "play" {
-		err = play(db, player)
+		err = player.CreateGame(db)
 	} else if *action == "settings" {
-		err = settings(db, player)
+		err = player.ManageSettings(db)
 	} else {
-		err = stats(db, player)
+		err = player.ViewStats(db)
 	}
 	return err
 }

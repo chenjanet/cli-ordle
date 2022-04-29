@@ -1,0 +1,12 @@
+# Binaries for programs and plugins
+*.exe
+*.exe~
+
+# Test binary
+*.test 
+
+# Boltdb
+*.db
+
+# Binary
+main
