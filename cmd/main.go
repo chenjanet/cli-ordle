@@ -55,12 +55,12 @@ func (p *Player) ViewStats() error {
 	} else {
 		winPercent = (p.Won / p.Played) * 100
 	}
-	fmt.Println("--- STATISTICS ---")
+	fmt.Println("---     STATISTICS     ---")
 	fmt.Printf("Played: %.0f | Win%%: %.0f%% | Current streak: %.0f | Longest streak: %.0f\n", p.Played, winPercent, p.CurrStreak, p.LongestStreak)
 	fmt.Println()
 	fmt.Println("--- GUESS DISTRIBUTION ---")
 	for i := 0; i < 6; i++ {
-		fmt.Printf("%d\t|\t%f\n", i+1, p.Stats[i])
+		fmt.Printf("%d\t|\t%.0f\n", i+1, p.Stats[i])
 	}
 	return nil
 }
@@ -130,10 +130,11 @@ func (g *Game) PrintBoard() error {
 
 func (g *Game) HandleResults() error {
 	if g.Solved {
-		fmt.Println("Impressive!")
+		numGuesses := len(g.WordsGuessed)
+		fmt.Printf("Impressive! You got the word in %d guesses\n", numGuesses)
 		g.Player.CurrStreak++
 		g.Player.LongestStreak = math.Max(g.Player.CurrStreak, g.Player.LongestStreak)
-		g.Player.Stats[len(g.WordsGuessed)-1]++
+		g.Player.Stats[numGuesses-1]++
 		g.Player.Won++
 	} else {
 		fmt.Printf("The answer was %s\n", g.Answer)
@@ -148,12 +149,13 @@ func (g *Game) PlayGame() error {
 	var err error
 	var input string
 	reader := bufio.NewReader(os.Stdin)
+	fmt.Printf("--- START OF CLIORDLE GAME ---\n")
 	for i := 1; i <= 6; i++ {
 		wordErr := fmt.Errorf("invalid")
 		for wordErr != nil {
 			fmt.Printf("Guess %d/6: ", i)
 			input, err = reader.ReadString('\n')
-			guess := strings.TrimSuffix(input, "\n")
+			guess := strings.ToLower(strings.TrimSuffix(input, "\n"))
 			wordErr = g.ProcessGuess(guess)
 			if wordErr != nil {
 				fmt.Printf("%s is an invalid guess, try again\n", guess)
