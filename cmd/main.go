@@ -20,17 +20,12 @@ const colourYellow = "\033[43m %s \033[0m"
 var db *bolt.DB
 
 type Player struct {
-	Settings      *Settings  `json:"settings"`
 	Played        float64    `json:"played"`
 	Won           float64    `json:"won"`
 	CurrStreak    float64    `json:"currStreak"`
 	LongestStreak float64    `json:"longestStreak"`
-	Stats         [6]float64 `json:"stats"`
-}
-
-type Settings struct {
-	ColourBlind bool `json:"colourBlind"`
-	HardMode    bool `json:"hardMode"`
+	Distribution  [6]float64 `json:"stats"`
+	ColourBlind   bool       `json:"colourBlind"`
 }
 
 func (p *Player) CreateGame() error {
@@ -48,6 +43,21 @@ func (p *Player) ManageSettings() error {
 	return err
 }
 
+func (p *Player) UpdateStatsW(numGuesses int) error {
+	p.CurrStreak++
+	p.LongestStreak = math.Max(p.CurrStreak, p.LongestStreak)
+	p.Distribution[numGuesses-1]++
+	p.Won++
+	p.Played++
+	return p.SaveStats()
+}
+
+func (p *Player) UpdateStatsL() error {
+	p.CurrStreak = 0
+	p.Played++
+	return p.SaveStats()
+}
+
 func (p *Player) ViewStats() error {
 	var winPercent float64
 	if p.Played == 0 {
@@ -60,7 +70,7 @@ func (p *Player) ViewStats() error {
 	fmt.Println()
 	fmt.Println("--- GUESS DISTRIBUTION ---")
 	for i := 0; i < 6; i++ {
-		fmt.Printf("%d\t|\t%.0f\n", i+1, p.Stats[i])
+		fmt.Printf("%d\t|\t%.0f\n", i+1, p.Distribution[i])
 	}
 	return nil
 }
@@ -132,17 +142,12 @@ func (g *Game) HandleResults() error {
 	if g.Solved {
 		numGuesses := len(g.WordsGuessed)
 		fmt.Printf("Impressive! You got the word in %d guesses\n", numGuesses)
-		g.Player.CurrStreak++
-		g.Player.LongestStreak = math.Max(g.Player.CurrStreak, g.Player.LongestStreak)
-		g.Player.Stats[numGuesses-1]++
-		g.Player.Won++
+		return g.Player.UpdateStatsW(numGuesses)
+
 	} else {
 		fmt.Printf("The answer was %s\n", g.Answer)
-		g.Player.CurrStreak = 0
+		return g.Player.UpdateStatsL()
 	}
-	g.Player.Played++
-	err := g.Player.SaveStats()
-	return err
 }
 
 func (g *Game) PlayGame() error {
@@ -199,8 +204,7 @@ func initPlayer() (Player, error) {
 		if playerBytes != nil {
 			dbErr = json.Unmarshal(playerBytes, &player)
 		} else {
-			playerSettings := Settings{false, false}
-			player = Player{&playerSettings, 0, 0, 0, 0, [6]float64{0}}
+			player = Player{0, 0, 0, 0, [6]float64{0}, false}
 		}
 		return dbErr
 	})
