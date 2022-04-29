@@ -6,6 +6,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"math"
 	"os"
 	"strings"
 
@@ -16,19 +17,21 @@ import (
 const colourGreen = "\033[42m %s \033[0m"
 const colourYellow = "\033[43m %s \033[0m"
 
+var db *bolt.DB
+
 type Player struct {
-	settings      *Settings
-	currStreak    int
-	longestStreak int
-	stats         [6]int
+	Settings      *Settings  `json:"settings"`
+	CurrStreak    float64    `json:"currStreak"`
+	LongestStreak float64    `json:"longestStreak"`
+	Stats         [6]float64 `json:"stats"`
 }
 
 type Settings struct {
-	colourBlind bool
-	hardMode    bool
+	ColourBlind bool `json:"colourBlind"`
+	HardMode    bool `json:"hardMode"`
 }
 
-func (p *Player) CreateGame(db *bolt.DB) error {
+func (p *Player) CreateGame() error {
 	answer, err := words.RandomWord()
 	if err != nil {
 		return err
@@ -38,21 +41,42 @@ func (p *Player) CreateGame(db *bolt.DB) error {
 	return err
 }
 
-func (p *Player) ManageSettings(db *bolt.DB) error {
+func (p *Player) ManageSettings() error {
 	var err error
 	return err
 }
 
-func (p *Player) ViewStats(db *bolt.DB) error {
+func (p *Player) ViewStats() error {
 	var err error
+	return err
+}
+
+func (p *Player) SaveStats() error {
+	playerBytes, err := json.Marshal(*p)
+	fmt.Printf("player data: %s\n", playerBytes)
+	if err != nil {
+		return fmt.Errorf("could not marshal player data json: %v", err)
+	}
+	err = db.Update(func(tx *bolt.Tx) error {
+		err = tx.Bucket([]byte("DB")).Put([]byte("PLAYER"), playerBytes)
+		if err != nil {
+			return fmt.Errorf("could not set player data: %v", err)
+		}
+		return nil
+	})
+	err = db.View(func(tx *bolt.Tx) error {
+		playerData := tx.Bucket([]byte("DB")).Get([]byte("PLAYER"))
+		fmt.Printf("data: %s\n", playerData)
+		return nil
+	})
 	return err
 }
 
 type Game struct {
-	player       *Player
-	wordsGuessed []string
-	answer       string
-	solved       bool
+	Player       *Player
+	WordsGuessed []string
+	Answer       string
+	Solved       bool
 }
 
 func (g *Game) ProcessGuess(guess string) error {
@@ -60,24 +84,24 @@ func (g *Game) ProcessGuess(guess string) error {
 	if !isValid {
 		return fmt.Errorf("invalid")
 	}
-	g.wordsGuessed = append(g.wordsGuessed, guess)
-	if guess == g.answer {
-		g.solved = true
+	g.WordsGuessed = append(g.WordsGuessed, guess)
+	if guess == g.Answer {
+		g.Solved = true
 	}
 	return nil
 }
 
 func (g *Game) PrintBoard() error {
 	fmt.Printf(" ___  ___  ___  ___  ___\n")
-	for i := 0; i < len(g.wordsGuessed); i++ {
+	for i := 0; i < len(g.WordsGuessed); i++ {
 		for j := 0; j < 5; j++ {
-			letter := string(g.wordsGuessed[i][j])
-			actual := string(g.answer[j])
+			letter := string(g.WordsGuessed[i][j])
+			actual := string(g.Answer[j])
 
 			fmt.Printf("|")
 			if letter == actual {
 				fmt.Printf(string(colourGreen), letter)
-			} else if strings.Contains(g.answer, letter) {
+			} else if strings.Contains(g.Answer, letter) {
 				fmt.Printf(string(colourYellow), letter)
 			} else {
 				fmt.Printf(" %s ", letter)
@@ -86,7 +110,7 @@ func (g *Game) PrintBoard() error {
 		}
 		fmt.Println("\n ---  ---  ---  ---  ---")
 	}
-	for i := len(g.wordsGuessed); i < 6; i++ {
+	for i := len(g.WordsGuessed); i < 6; i++ {
 		for j := 0; j < 5; j++ {
 			fmt.Printf("|   |")
 		}
@@ -97,7 +121,16 @@ func (g *Game) PrintBoard() error {
 }
 
 func (g *Game) HandleResults() error {
-	var err error
+	if g.Solved {
+		fmt.Println("Impressive!")
+		g.Player.CurrStreak++
+		g.Player.LongestStreak = math.Max(g.Player.CurrStreak, g.Player.LongestStreak)
+		g.Player.Stats[len(g.WordsGuessed)-1]++
+	} else {
+		fmt.Printf("The answer was %s\n", g.Answer)
+		g.Player.CurrStreak = 0
+	}
+	err := g.Player.SaveStats()
 	return err
 }
 
@@ -117,7 +150,7 @@ func (g *Game) PlayGame() error {
 			}
 		}
 		g.PrintBoard()
-		if g.solved {
+		if g.Solved {
 			break
 		}
 	}
@@ -125,38 +158,39 @@ func (g *Game) PlayGame() error {
 	return err
 }
 
-func setupDB() (*bolt.DB, error) {
-	db, dbErr := bolt.Open("cliordle.db", 0600, nil)
+func setupDB() error {
+	var dbErr error
+	db, dbErr = bolt.Open("cliordle.db", 0600, nil)
 
 	if dbErr != nil {
-		return nil, fmt.Errorf("could not open db, %v", dbErr)
+		return fmt.Errorf("could not open db, %v", dbErr)
 	}
 
 	dbErr = db.Update(func(tx *bolt.Tx) error {
-		root, bucketErr := tx.CreateBucketIfNotExists([]byte("DB"))
+		_, bucketErr := tx.CreateBucketIfNotExists([]byte("DB"))
 		if bucketErr != nil {
 			return fmt.Errorf("could not create root bucket: %v", bucketErr)
-		}
-		_, bucketErr = root.CreateBucketIfNotExists([]byte("PLAYERDATA"))
-		if bucketErr != nil {
-			return fmt.Errorf("could not create player data bucket: %v", bucketErr)
 		}
 		return nil
 	})
 	if dbErr != nil {
-		return nil, fmt.Errorf("could not set up buckets, %v", dbErr)
+		return fmt.Errorf("could not set up buckets, %v", dbErr)
 	}
-	fmt.Println("DB setup done")
-	return db, nil
+	return nil
 }
 
-func initPlayer(db *bolt.DB) (*Player, error) {
-	var player *Player
+func initPlayer() (Player, error) {
+	var player Player
 	err := db.View(func(tx *bolt.Tx) error {
-		playerBytes := tx.Bucket([]byte("DB")).Get([]byte("PLAYERDATA"))
-		var dbErr error
-		dbErr = json.Unmarshal(playerBytes, player)
-		fmt.Println()
+		playerBytes := tx.Bucket([]byte("DB")).Get([]byte("PLAYER"))
+		var dbErr error = nil
+		if playerBytes != nil {
+			dbErr = json.Unmarshal(playerBytes, &player)
+			fmt.Printf("player: %s\n", playerBytes)
+		} else {
+			playerSettings := Settings{false, false}
+			player = Player{&playerSettings, 0, 0, [6]float64{0}}
+		}
 		return dbErr
 	})
 	return player, err
@@ -167,7 +201,7 @@ func exitGracefully(err error) {
 	os.Exit(1)
 }
 
-func manageCommands(db *bolt.DB, player *Player) error {
+func manageCommands(player *Player) error {
 	// validate that correct number of arguments is being received
 	if len(os.Args) < 1 {
 		return errors.New("Insufficient number of arguments")
@@ -188,17 +222,17 @@ func manageCommands(db *bolt.DB, player *Player) error {
 	var err error
 
 	if *action == "play" {
-		err = player.CreateGame(db)
+		err = player.CreateGame()
 	} else if *action == "settings" {
-		err = player.ManageSettings(db)
+		err = player.ManageSettings()
 	} else {
-		err = player.ViewStats(db)
+		err = player.ViewStats()
 	}
 	return err
 }
 
 func main() {
-	db, dbErr := setupDB()
+	dbErr := setupDB()
 
 	if dbErr != nil {
 		exitGracefully(dbErr)
@@ -212,10 +246,10 @@ func main() {
 		flag.PrintDefaults()
 	}
 
-	player, err := initPlayer(db)
+	player, err := initPlayer()
 
 	// processing user command
-	err = manageCommands(db, player)
+	err = manageCommands(&player)
 
 	if err != nil {
 		exitGracefully(err)
