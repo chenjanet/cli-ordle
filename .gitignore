@@ -6,7 +6,10 @@
 *.test 
 
 # Boltdb
-*.db
+**/*.db
 
 # Binary
-main
+**/main
+
+# vscode settings
+.vscode
