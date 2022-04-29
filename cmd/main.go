@@ -67,7 +67,6 @@ func (p *Player) ViewStats() error {
 
 func (p *Player) SaveStats() error {
 	playerBytes, err := json.Marshal(*p)
-	fmt.Printf("player data: %s\n", playerBytes)
 	if err != nil {
 		return fmt.Errorf("could not marshal player data json: %v", err)
 	}
@@ -76,11 +75,6 @@ func (p *Player) SaveStats() error {
 		if err != nil {
 			return fmt.Errorf("could not set player data: %v", err)
 		}
-		return nil
-	})
-	err = db.View(func(tx *bolt.Tx) error {
-		playerData := tx.Bucket([]byte("DB")).Get([]byte("PLAYER"))
-		fmt.Printf("data: %s\n", playerData)
 		return nil
 	})
 	return err
@@ -202,7 +196,6 @@ func initPlayer() (Player, error) {
 		var dbErr error = nil
 		if playerBytes != nil {
 			dbErr = json.Unmarshal(playerBytes, &player)
-			fmt.Printf("player: %s\n", playerBytes)
 		} else {
 			playerSettings := Settings{false, false}
 			player = Player{&playerSettings, 0, 0, 0, 0, [6]float64{0}}
