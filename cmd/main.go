@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"math"
@@ -16,6 +15,8 @@ import (
 
 const colourGreen = "\033[42m %s \033[0m"
 const colourYellow = "\033[43m %s \033[0m"
+const colourOrange = "\033[48;5;202m %s \033[0m"
+const colourBlue = "\033[46m %s \033[0m"
 
 var db *bolt.DB
 
@@ -25,7 +26,8 @@ type Player struct {
 	CurrStreak    float64    `json:"currStreak"`
 	LongestStreak float64    `json:"longestStreak"`
 	Distribution  [6]float64 `json:"stats"`
-	ColourBlind   bool       `json:"colourBlind"`
+	HiContrast    bool       `json:"hiContrast"`
+	HardMode      bool       `json:"hardMode"`
 }
 
 func (p *Player) CreateGame() error {
@@ -38,9 +40,12 @@ func (p *Player) CreateGame() error {
 	return err
 }
 
-func (p *Player) ManageSettings() error {
-	var err error
-	return err
+func (p *Player) ManageSettings(hiContrast bool, hardMode bool) error {
+	p.HiContrast = hiContrast
+	p.HardMode = false
+	fmt.Println("---   CURRENT SETTINGS   ---")
+	fmt.Printf("High-contrast\t|\t%t\nHard mode\t|\t%t\n", p.HiContrast, p.HardMode)
+	return p.SaveStats()
 }
 
 func (p *Player) UpdateStatsW(numGuesses int) error {
@@ -110,6 +115,15 @@ func (g *Game) ProcessGuess(guess string) error {
 }
 
 func (g *Game) PrintBoard() error {
+	var placedColour string
+	var includesColour string
+	if g.Player.HiContrast {
+		placedColour = colourOrange
+		includesColour = colourBlue
+	} else {
+		placedColour = colourGreen
+		includesColour = colourYellow
+	}
 	fmt.Printf(" ___  ___  ___  ___  ___\n")
 	for i := 0; i < len(g.WordsGuessed); i++ {
 		for j := 0; j < 5; j++ {
@@ -118,9 +132,9 @@ func (g *Game) PrintBoard() error {
 
 			fmt.Printf("|")
 			if letter == actual {
-				fmt.Printf(string(colourGreen), letter)
+				fmt.Printf(string(placedColour), letter)
 			} else if strings.Contains(g.Answer, letter) {
-				fmt.Printf(string(colourYellow), letter)
+				fmt.Printf(string(includesColour), letter)
 			} else {
 				fmt.Printf(" %s ", letter)
 			}
@@ -204,7 +218,7 @@ func initPlayer() (Player, error) {
 		if playerBytes != nil {
 			dbErr = json.Unmarshal(playerBytes, &player)
 		} else {
-			player = Player{0, 0, 0, 0, [6]float64{0}, false}
+			player = Player{0, 0, 0, 0, [6]float64{0}, false, false}
 		}
 		return dbErr
 	})
@@ -217,33 +231,49 @@ func exitGracefully(err error) {
 }
 
 func manageCommands(player *Player) error {
+	// cliordle subcommands
+	playCommand := flag.NewFlagSet("play", flag.ExitOnError)
+	settingsCommand := flag.NewFlagSet("settings", flag.ExitOnError)
+	statsCommand := flag.NewFlagSet("stats", flag.ExitOnError)
+
+	// settings command flag pointers
+	settingsContrastPtr := settingsCommand.Bool("highContrast", player.HiContrast, "Turn high-contrast mode on/off")
+	settingsHardModePtr := settingsCommand.Bool("hardMode", player.HardMode, "Turn hard mode on/off")
+
 	// validate that correct number of arguments is being received
-	if len(os.Args) < 1 {
-		return errors.New("Insufficient number of arguments")
+	if len(os.Args) < 2 {
+		return fmt.Errorf("play, settings, or stats subcommand required")
 	}
 
-	action := flag.String("action", "play", "Action to perform")
-
-	flag.Parse()
-
-	if !(*action == "play" || *action == "settings" || *action == "stats") {
-		return errors.New("Only 'play', 'settings', and 'stats' actions are supported")
-	}
-
-	if (*action == "play" || *action == "settings" || *action == "stats") && len(os.Args) > 2 {
-		return errors.New("Too many arguments specified")
+	switch os.Args[1] {
+	case "play":
+		playCommand.Parse(os.Args[2:])
+	case "settings":
+		settingsCommand.Parse(os.Args[2:])
+	case "stats":
+		statsCommand.Parse(os.Args[2:])
+	default:
+		return fmt.Errorf("play, settings, or stats subcommand required")
 	}
 
 	var err error
-
-	if *action == "play" {
+	if playCommand.Parsed() {
 		err = player.CreateGame()
-	} else if *action == "settings" {
-		err = player.ManageSettings()
+		if err != nil {
+			return err
+		}
+	} else if settingsCommand.Parsed() {
+		err = player.ManageSettings(*settingsContrastPtr, *settingsHardModePtr)
+		if err != nil {
+			return err
+		}
 	} else {
 		err = player.ViewStats()
+		if err != nil {
+			return err
+		}
 	}
-	return err
+	return nil
 }
 
 func main() {
