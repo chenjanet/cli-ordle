@@ -21,6 +21,8 @@ var db *bolt.DB
 
 type Player struct {
 	Settings      *Settings  `json:"settings"`
+	Played        float64    `json:"played"`
+	Won           float64    `json:"won"`
 	CurrStreak    float64    `json:"currStreak"`
 	LongestStreak float64    `json:"longestStreak"`
 	Stats         [6]float64 `json:"stats"`
@@ -47,8 +49,20 @@ func (p *Player) ManageSettings() error {
 }
 
 func (p *Player) ViewStats() error {
-	var err error
-	return err
+	var winPercent float64
+	if p.Played == 0 {
+		winPercent = 0
+	} else {
+		winPercent = (p.Won / p.Played) * 100
+	}
+	fmt.Println("--- STATISTICS ---")
+	fmt.Printf("Played: %.0f | Win%%: %.0f%% | Current streak: %.0f | Longest streak: %.0f\n", p.Played, winPercent, p.CurrStreak, p.LongestStreak)
+	fmt.Println()
+	fmt.Println("--- GUESS DISTRIBUTION ---")
+	for i := 0; i < 6; i++ {
+		fmt.Printf("%d\t|\t%f\n", i+1, p.Stats[i])
+	}
+	return nil
 }
 
 func (p *Player) SaveStats() error {
@@ -126,10 +140,12 @@ func (g *Game) HandleResults() error {
 		g.Player.CurrStreak++
 		g.Player.LongestStreak = math.Max(g.Player.CurrStreak, g.Player.LongestStreak)
 		g.Player.Stats[len(g.WordsGuessed)-1]++
+		g.Player.Won++
 	} else {
 		fmt.Printf("The answer was %s\n", g.Answer)
 		g.Player.CurrStreak = 0
 	}
+	g.Player.Played++
 	err := g.Player.SaveStats()
 	return err
 }
@@ -189,7 +205,7 @@ func initPlayer() (Player, error) {
 			fmt.Printf("player: %s\n", playerBytes)
 		} else {
 			playerSettings := Settings{false, false}
-			player = Player{&playerSettings, 0, 0, [6]float64{0}}
+			player = Player{&playerSettings, 0, 0, 0, 0, [6]float64{0}}
 		}
 		return dbErr
 	})
