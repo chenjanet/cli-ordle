@@ -35,7 +35,7 @@ func (p *Player) CreateGame() error {
 	if err != nil {
 		return err
 	}
-	currGame := Game{p, []string{}, answer, false}
+	currGame := Game{p, []Guess{}, answer, false}
 	err = currGame.PlayGame()
 	return err
 }
@@ -95,20 +95,68 @@ func (p *Player) SaveStats() error {
 	return err
 }
 
-type Game struct {
-	Player       *Player
-	WordsGuessed []string
-	Answer       string
-	Solved       bool
+type Guess struct {
+	Word     string
+	Answer   string
+	Statuses [5]string
 }
 
-func (g *Game) ProcessGuess(guess string) error {
-	isValid := words.IsValidGuess(guess)
+func (g *Guess) GetGuessStatuses() {
+	splitAns := strings.Split(g.Answer, "")
+	splitGuess := strings.Split(g.Word, "")
+	solutionCharsUsed := make([]bool, 5)
+	var statuses [5]string
+
+	for i, g := range splitGuess {
+		if g == splitAns[i] {
+			statuses[i] = "correct"
+			solutionCharsUsed[i] = true
+		}
+	}
+
+	for i, g := range splitGuess {
+		if statuses[i] != "" {
+			continue
+		}
+		if !find(splitAns, g) {
+			statuses[i] = "absent"
+		} else {
+			indexOfPresentChar := -1
+			for j, a := range splitAns {
+				if a == g && !solutionCharsUsed[j] {
+					indexOfPresentChar = j
+					break
+				}
+			}
+			if indexOfPresentChar > -1 {
+				statuses[i] = "present"
+				solutionCharsUsed[indexOfPresentChar] = true
+			} else {
+				statuses[i] = "absent"
+			}
+		}
+	}
+	g.Statuses = statuses
+}
+
+type Game struct {
+	Player  *Player
+	Guesses []Guess
+	Answer  string
+	Solved  bool
+}
+
+func (g *Game) ProcessGuess(guessedWord string) error {
+	isValid := words.IsValidGuess(guessedWord)
 	if !isValid {
 		return fmt.Errorf("invalid")
 	}
-	g.WordsGuessed = append(g.WordsGuessed, guess)
-	if guess == g.Answer {
+	guess := Guess{}
+	guess.Word = guessedWord
+	guess.Answer = g.Answer
+	guess.GetGuessStatuses()
+	g.Guesses = append(g.Guesses, guess)
+	if guessedWord == g.Answer {
 		g.Solved = true
 	}
 	return nil
@@ -125,15 +173,14 @@ func (g *Game) PrintBoard() error {
 		includesColour = colourYellow
 	}
 	fmt.Printf(" ___  ___  ___  ___  ___\n")
-	for i := 0; i < len(g.WordsGuessed); i++ {
+	for i := 0; i < len(g.Guesses); i++ {
 		for j := 0; j < 5; j++ {
-			letter := string(g.WordsGuessed[i][j])
-			actual := string(g.Answer[j])
+			letter := string(g.Guesses[i].Word[j])
 
 			fmt.Printf("|")
-			if letter == actual {
+			if g.Guesses[i].Statuses[j] == "correct" {
 				fmt.Printf(string(placedColour), letter)
-			} else if strings.Contains(g.Answer, letter) {
+			} else if g.Guesses[i].Statuses[j] == "present" {
 				fmt.Printf(string(includesColour), letter)
 			} else {
 				fmt.Printf(" %s ", letter)
@@ -142,7 +189,7 @@ func (g *Game) PrintBoard() error {
 		}
 		fmt.Println("\n ---  ---  ---  ---  ---")
 	}
-	for i := len(g.WordsGuessed); i < 6; i++ {
+	for i := len(g.Guesses); i < 6; i++ {
 		for j := 0; j < 5; j++ {
 			fmt.Printf("|   |")
 		}
@@ -154,7 +201,7 @@ func (g *Game) PrintBoard() error {
 
 func (g *Game) HandleResults() error {
 	if g.Solved {
-		numGuesses := len(g.WordsGuessed)
+		numGuesses := len(g.Guesses)
 		fmt.Printf("Impressive! You got the word in %d guesses\n", numGuesses)
 		return g.Player.UpdateStatsW(numGuesses)
 
@@ -187,6 +234,15 @@ func (g *Game) PlayGame() error {
 	}
 	g.HandleResults()
 	return err
+}
+
+func find(arr []string, str string) bool {
+	for _, s := range arr {
+		if s == str {
+			return true
+		}
+	}
+	return false
 }
 
 func setupDB() error {
