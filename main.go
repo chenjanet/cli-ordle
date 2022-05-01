@@ -286,52 +286,6 @@ func exitGracefully(err error) {
 	os.Exit(1)
 }
 
-func manageCommands(player *Player) error {
-	// cliordle subcommands
-	playCommand := flag.NewFlagSet("play", flag.ExitOnError)
-	settingsCommand := flag.NewFlagSet("settings", flag.ExitOnError)
-	statsCommand := flag.NewFlagSet("stats", flag.ExitOnError)
-
-	// settings command flag pointers
-	settingsContrastPtr := settingsCommand.Bool("highContrast", player.HiContrast, "Turn high-contrast mode on/off")
-	settingsHardModePtr := settingsCommand.Bool("hardMode", player.HardMode, "Turn hard mode on/off")
-
-	// validate that correct number of arguments is being received
-	if len(os.Args) < 2 {
-		return fmt.Errorf("play, settings, or stats subcommand required")
-	}
-
-	switch os.Args[1] {
-	case "play":
-		playCommand.Parse(os.Args[2:])
-	case "settings":
-		settingsCommand.Parse(os.Args[2:])
-	case "stats":
-		statsCommand.Parse(os.Args[2:])
-	default:
-		return fmt.Errorf("play, settings, or stats subcommand required")
-	}
-
-	var err error
-	if playCommand.Parsed() {
-		err = player.CreateGame()
-		if err != nil {
-			return err
-		}
-	} else if settingsCommand.Parsed() {
-		err = player.ManageSettings(*settingsContrastPtr, *settingsHardModePtr)
-		if err != nil {
-			return err
-		}
-	} else {
-		err = player.ViewStats()
-		if err != nil {
-			return err
-		}
-	}
-	return nil
-}
-
 func main() {
 	dbErr := setupDB()
 
@@ -349,8 +303,38 @@ func main() {
 
 	player, err := initPlayer()
 
-	// processing user command
-	err = manageCommands(&player)
+	// cliordle subcommands
+	playCommand := flag.NewFlagSet("play", flag.ExitOnError)
+	settingsCommand := flag.NewFlagSet("settings", flag.ExitOnError)
+	statsCommand := flag.NewFlagSet("stats", flag.ExitOnError)
+
+	// settings command flag pointers
+	settingsContrastPtr := settingsCommand.Bool("highContrast", player.HiContrast, "Turn high-contrast mode on/off")
+	settingsHardModePtr := settingsCommand.Bool("hardMode", player.HardMode, "Turn hard mode on/off")
+
+	// validate that correct number of arguments is being received
+	if len(os.Args) < 2 {
+		err = fmt.Errorf("play, settings, or stats subcommand required")
+	}
+
+	switch os.Args[1] {
+	case "play":
+		playCommand.Parse(os.Args[2:])
+	case "settings":
+		settingsCommand.Parse(os.Args[2:])
+	case "stats":
+		statsCommand.Parse(os.Args[2:])
+	default:
+		err = fmt.Errorf("play, settings, or stats subcommand required")
+	}
+
+	if playCommand.Parsed() {
+		err = player.CreateGame()
+	} else if settingsCommand.Parsed() {
+		err = player.ManageSettings(*settingsContrastPtr, *settingsHardModePtr)
+	} else {
+		err = player.ViewStats()
+	}
 
 	if err != nil {
 		exitGracefully(err)
