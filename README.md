@@ -20,7 +20,6 @@ $ ./cliordle stats
 
 ## To-do
 1. Implement hard mode
-2. Clean up the cli using Cobra
 
 ## Sources
 * [The original Wordle game](https://www.nytimes.com/games/wordle/index.html), for the initial inspiration & many moments of entertainment and frustration
